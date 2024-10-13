@@ -1,0 +1,10 @@
+[
+    {
+        "$schema": "lamprey.wiki",
+        "title": "Test wiki",
+        "description": "This is a test wiki",
+        "license": "CC0",
+        "homeUrl": null,
+        "languages": ["EN-US"]
+    }
+]

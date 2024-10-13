@@ -1,0 +1,5 @@
+[http]
+address = ":8080"
+
+[deployToFolder]
+path = "d:/dev/lamprey/serve"
