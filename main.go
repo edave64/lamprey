@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/json"
+	"html/template"
 	"lamprey/core"
 	"lamprey/core/db"
 	"lamprey/core/deployer"
+	"log"
 	"net"
 	"net/http"
 	"net/http/fcgi"
@@ -24,6 +27,11 @@ func main() {
 	app := App{
 		PageManager: *pm,
 		Config:      a,
+		Deployer:    deployer.DummyDeployer{},
+	}
+
+	if a.DeployToFolder != nil {
+		app.Deployer = deployer.InitFsDeployer(*a.DeployToFolder)
 	}
 
 	// start server
@@ -33,6 +41,10 @@ func main() {
 
 	if a.FastCgi != nil {
 		fastCgiServer(*a.FastCgi, app)
+	}
+
+	if _, ok := app.Deployer.(deployer.DummyDeployer); ok {
+		panic("No deployer configured!")
 	}
 }
 
@@ -69,14 +81,29 @@ func getHttpHandler(prefix string, app App) http.Handler {
 		w.Write([]byte(r.RequestURI))
 	})
 	a.HandleFunc("GET "+prefix+"/edit/article/{objectid}", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Editing article for " + r.PathValue("objectid")))
-		w.Write([]byte(r.RequestURI))
+		page, err := app.PageManager.GetPage(r.PathValue("objectid"))
+		if err != nil {
+			w.Write([]byte("Unable to get page"))
+			panic(err)
+		}
+
+		templates, err := template.ParseFiles("views/layout.html.gotmpl", "views/edit.html.gotmpl")
+		if err != nil {
+			http.Error(w, "Error loading templates", http.StatusInternalServerError)
+			log.Println("Error parsing templates:", err)
+			return
+		}
+
+		// Render the template with the provided Page data
+		err = templates.ExecuteTemplate(w, "layout.html.gotmpl", page)
+		if err != nil {
+			http.Error(w, "Error rendering template", http.StatusInternalServerError)
+			log.Println("Error executing template:", err)
+		}
 	})
 	a.HandleFunc("POST "+prefix+"/edit/article/{objectid}", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("Saving article for " + r.PathValue("objectid")))
-		w.Write([]byte(r.RequestURI))
-
-		page, err := app.PageManager.GetPage(r.PathValue("objectid"))
+		objectid := r.PathValue("objectid")
+		page, err := app.PageManager.GetPage(objectid)
 		if err != nil {
 			w.Write([]byte("Unable to get page"))
 			panic(err)
@@ -92,6 +119,8 @@ func getHttpHandler(prefix string, app App) http.Handler {
 			w.Write([]byte("Unable to deploy article"))
 			panic(err)
 		}
+
+		http.Redirect(w, r, prefix+"/edit/article/"+objectid, http.StatusSeeOther)
 	})
 	a.HandleFunc("GET "+prefix+"/data/{objectid}", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Editing data for " + r.PathValue("objectid")))
@@ -106,7 +135,7 @@ func getHttpHandler(prefix string, app App) http.Handler {
 			w.Write([]byte("Unable to get page"))
 			panic(err)
 		}
-		page.Content = r.FormValue("content")
+		json.Unmarshal([]byte(r.FormValue("data")), &page.Data)
 		err = app.PageManager.UpdatePage(page.ID, page.Title, page.Content, page.Data)
 		if err != nil {
 			w.Write([]byte("Unable to update page"))

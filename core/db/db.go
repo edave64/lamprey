@@ -6,7 +6,8 @@ import (
 	"strconv"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "github.com/ncruces/go-sqlite3/driver"
+	_ "github.com/ncruces/go-sqlite3/embed"
 )
 
 type Page struct {
@@ -37,7 +38,7 @@ type PageManager struct {
 }
 
 func NewPageManager(dbPath string) (*PageManager, error) {
-	db, err := sql.Open("sqlite3", dbPath)
+	db, err := sql.Open("sqlite3", "file:"+dbPath)
 	if err != nil {
 		return nil, err
 	}
@@ -155,21 +156,14 @@ func (pm *PageManager) GetPage(id string) (*Page, error) {
 }
 
 func (pm *PageManager) GetPageByID(id int64) (*Page, error) {
-	row := pm.getPageByIDStmt.QueryRow(id)
-
-	var page Page
-	var rawData []byte
-	err := row.Scan(&page.ID, &page.Title, &page.CreatedAt, &page.UpdatedAt, &page.Content, &rawData, &page.Deleted)
-	if err != nil {
-		return nil, err
-	}
-	page.Data = rawData
-	return &page, nil
+	return pm.pageFromRow(pm.getPageByIDStmt.QueryRow(id))
 }
 
 func (pm *PageManager) GetPageByTitle(title string) (*Page, error) {
-	row := pm.getPageByTitleStmt.QueryRow(title)
+	return pm.pageFromRow(pm.getPageByTitleStmt.QueryRow(title))
+}
 
+func (pm *PageManager) pageFromRow(row *sql.Row) (*Page, error) {
 	var page Page
 	var rawData []byte
 	err := row.Scan(&page.ID, &page.Title, &page.CreatedAt, &page.UpdatedAt, &page.Content, &rawData, &page.Deleted)
